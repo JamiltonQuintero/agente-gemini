@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agente de Viajes AI - Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .chat-container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: 20%;
+        }
+        .agent-message {
+            background-color: #f5f5f5;
+            margin-right: 20%;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        #startRecording {
+            background-color: #4CAF50;
+            color: white;
+        }
+        #startRecording:hover {
+            background-color: #45a049;
+        }
+        #startRecording.recording {
+            background-color: #f44336;
+        }
+        .status {
+            text-align: center;
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Agente de Viajes AI - Chat</h1>
+    <div class="chat-container" id="chatContainer"></div>
+    <div class="controls">
+        <button id="startRecording">🎤 Iniciar Grabación</button>
+    </div>
+    <div class="status" id="status"></div>
+
+    <script>
+        let ws;
+        let isRecording = false;
+        let recognition;
+        
+        // Inicializar WebSocket
+        function initWebSocket() {
+            ws = new WebSocket('ws://localhost:8000/ws/chat');
+            
+            ws.onopen = () => {
+                updateStatus('Conectado al servidor');
+                document.getElementById('startRecording').disabled = false;
+            };
+            
+            ws.onmessage = async (event) => {
+                const response = JSON.parse(event.data);
+                
+                switch (response.type) {
+                    case 'text':
+                        addMessage(response.content, 'agent');
+                        break;
+                    
+                    case 'status':
+                        updateStatus(response.content);
+                        break;
+                    
+                    case 'error':
+                        updateStatus('Error: ' + response.content);
+                        console.error('Server error:', response.content);
+                        break;
+                }
+            };
+            
+            ws.onerror = (error) => {
+                updateStatus('Error de conexión');
+                console.error('WebSocket error:', error);
+            };
+            
+            ws.onclose = () => {
+                updateStatus('Desconectado del servidor');
+                setTimeout(initWebSocket, 3000);
+            };
+        }
+
+        // Inicializar reconocimiento de voz
+        function initSpeechRecognition() {
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'es-ES';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript;
+                addMessage(text, 'user');
+                sendMessage(text);
+            };
+
+            recognition.onerror = (event) => {
+                updateStatus('Error en reconocimiento de voz: ' + event.error);
+                stopRecording();
+            };
+
+            recognition.onend = () => {
+                if (isRecording) {
+                    recognition.start();
+                }
+            };
+        }
+
+        // Función para enviar mensaje al servidor
+        function sendMessage(text) {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    message: text
+                }));
+            }
+        }
+
+        // Función para agregar mensajes al chat
+        function addMessage(text, sender) {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            messageDiv.textContent = text;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Función para actualizar el estado
+        function updateStatus(text) {
+            document.getElementById('status').textContent = text;
+        }
+
+        // Event Listener para el botón de grabación
+        document.getElementById('startRecording').addEventListener('click', () => {
+            if (!isRecording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        });
+
+        // Función para iniciar grabación
+        function startRecording() {
+            isRecording = true;
+            document.getElementById('startRecording').textContent = '⏹ Detener Grabación';
+            document.getElementById('startRecording').classList.add('recording');
+            updateStatus('Escuchando...');
+            recognition.start();
+        }
+
+        // Función para detener grabación
+        function stopRecording() {
+            isRecording = false;
+            document.getElementById('startRecording').textContent = '🎤 Iniciar Grabación';
+            document.getElementById('startRecording').classList.remove('recording');
+            updateStatus('Grabación detenida');
+            recognition.stop();
+        }
+
+        // Inicializar todo al cargar la página
+        window.onload = () => {
+            initWebSocket();
+            initSpeechRecognition();
+        };
+    </script>
+</body>
+</html> 
